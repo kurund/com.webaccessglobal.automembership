@@ -132,17 +132,30 @@ function automembership_civicrm_alterSettingsFolders(&$metaDataFolders = NULL) {
  * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_post/
  */
 function automembership_civicrm_post($op, $objectName, $objectId, &$objectRef) {
-  if ($objectName == 'Contribution' && $op == 'create') {
+  if ($objectName == 'Contribution' && ($op == 'create' || $op == 'edit' )) {
     // get the contact id of contributor
-
     // get the household for the contributor
-    computeMembership($householdID);
+    $result = civicrm_api3('Relationship', 'get', array(
+      'sequential' => 1,
+      'return' => array("contact_id_b"),
+      'contact_id_a' => $objectRef->contact_id,
+      'relationship_type_id' => 8, // household member of
+      'is_active' => 1,
+    ));
 
+    // compute membership only if household exist
+    if ($result['count'] > 0) {
+      computeMembership($result['values'][0]['contact_id_b']);
+    }
   }
 }
 
 function computeMembership($householdID) {
   // check the membership for the household
+  $result = civicrm_api3('Membership', 'get', array(
+    'sequential' => 1,
+    'contact_id' => $householdID,
+  ));
 
   // calculate contribution credits for household based on members in the
   // household
