@@ -150,15 +150,45 @@ function automembership_civicrm_post($op, $objectName, $objectId, &$objectRef) {
   }
 }
 
+/**
+ * Function to determine if a membership needs to be created for a household
+ *
+ * @param $householdID
+ *
+ * @throws \CiviCRM_API3_Exception
+ */
 function computeMembership($householdID) {
+  // calculate contribution credits for household based on members in the
+  // household
+  $householdCredit = calculateHouseholdCredit($householdID);
+
+  // get membership types
+  $membershipTypes = civicrm_api3('MembershipType', 'get', array(
+    'sequential' => 1,
+    'return' => array("minimum_fee"),
+    'is_active' => 1,
+  ));
+
+  $processMembership = FALSE;
+  foreach($membershipTypes['values'] as $key => $value) {
+    if ($householdCredit >= $value['minimum_fee']) {
+      $processMembership = TRUE;
+      break;
+    }
+  }
+
+  // this means we don't need proceed further as credit is insufficient
+  if (!$processMembership) {
+    return;
+  }
+
+  exit;
   // check the membership for the household
   $result = civicrm_api3('Membership', 'get', array(
     'sequential' => 1,
     'contact_id' => $householdID,
   ));
 
-  // calculate contribution credits for household based on members in the
-  // household
 
   // based on contribution credit there are 3 conditions
   // 1. No sufficient for the membership
@@ -170,4 +200,16 @@ function computeMembership($householdID) {
   // upgrade existing membership
 
   // link the contribution records with the membership
+}
+
+/**
+ * Function to calculate household credit
+ * @param $householdID
+ *
+ * @return int
+ */
+function calculateHouseholdCredit($householdID) {
+  $householdCredit = 35;
+
+  return $householdCredit;
 }
