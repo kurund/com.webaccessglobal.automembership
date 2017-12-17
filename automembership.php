@@ -192,43 +192,45 @@ function computeMembership($householdID) {
 
   // this means we don't need proceed further as credit is insufficient
   if (!$processMembership) {
+    CRM_Core_Error::debug_log_message("AMC: Insufficient credits for membership, hence aborted. Household ID: {$householdID}.");
     return;
   }
 
   // check the membership for the household
-  $houseHoldMembership = civicrm_api3('Membership', 'get', array(
+  $existingHouseHoldMembership = civicrm_api3('Membership', 'get', array(
     'sequential' => 1,
     'status_id'  => array('!=' => "Cancelled"),
     'contact_id' => $householdID,
   ));
 
-  if (!empty($houseHoldMembership['values'][0]['membership_type_id'])) {
-    $currentMembershipTypeID = $houseHoldMembership['values'][0]['membership_type_id'];
-    $currentMembershipID = $houseHoldMembership['values'][0]['id'];
+  if (!empty($existingHouseHoldMembership['values'][0]['membership_type_id'])) {
+    $currentMembershipTypeID = $existingHouseHoldMembership['values'][0]['membership_type_id'];
+    $currentMembershipID = $existingHouseHoldMembership['values'][0]['id'];
   }
 
   // for some reason / user error, if there are more than 1 active membership
   // just write to log and return, admin will have to manually set only 1
   // active membership
-  if ($houseHoldMembership['count'] > 1) {
+  if ($existingHouseHoldMembership['count'] > 1) {
     CRM_Core_Error::debug_log_message(
-      "AMC: There are {$houseHoldMembership['count']} active memberships for the household ID: {$householdID}. Only one membership needs to be active at a time. Hence, auto membership computation is aborted.");
+      "AMC: There are {$existingHouseHoldMembership['count']} active memberships for the household ID: {$householdID}. Only one membership needs to be active at a time. Hence, auto membership computation is aborted.");
     return;
   }
 
   // if membership does not exist and is eligible for membership then create
-  if ($houseHoldMembership['count'] == 0 && !empty($eligibleMembershipTypeID)) {
+  if ($existingHouseHoldMembership['count'] == 0 && !empty($eligibleMembershipTypeID)) {
     $houseHoldMembership = civicrm_api3('Membership', 'create', array(
       'sequential'         => 1,
       'membership_type_id' => $eligibleMembershipTypeID,
       'contact_id'         => $householdID,
     ));
 
-    $currentMembershipID = $houseHoldMembership['values'][0]['id'];
+    $currentMembershipID = $houseHoldMembership['id'];
+    CRM_Core_Error::debug_log_message("AMC: New membership has been created for household ID: {$householdID}.");
   }
   elseif ($eligibleMembershipTypeID == $currentMembershipTypeID) {
     // if household's current membership is same as what's eligible do nothing
-    CRM_Core_Error::debug_log_message("AMC: Current membership eligibility for household ID: {$householdID} is same as current  membership hence aborted.");
+    CRM_Core_Error::debug_log_message("AMC: Current membership eligibility for household ID: {$householdID} is same as current membership hence aborted.");
     return;
   }
   elseif ($eligibleMembershipFee > $membershipTypesArray[$currentMembershipTypeID]) {
@@ -250,7 +252,8 @@ function computeMembership($householdID) {
     // calculate dates based on membership type
     $calculateDates = CRM_Member_BAO_MembershipType::getDatesForMembershipType(
       $eligibleMembershipTypeID,
-      $houseHoldMembership['values'][0]['join_date'], date('YmdHis'));
+      $existingHouseHoldMembership['values'][$currentMembershipID]['join_date'],
+      date('YmdHis'));
 
     $houseHoldMembership = civicrm_api3('Membership', 'create', array(
       'sequential'         => 1,
@@ -261,15 +264,22 @@ function computeMembership($householdID) {
       'end_date'           => $calculateDates['end_date'],
     ));
 
+    $currentMembershipID = $houseHoldMembership['id'];
+    CRM_Core_Error::debug_log_message("AMC: Membership has been upgraded for household ID: {$householdID}.");
+  }
+  else {
+    // this mean credit is less than existing membership level hence abort
+    CRM_Core_Error::debug_log_message("AMC: Insufficient credits for membership upgrade, hence aborted. Household ID: {$householdID}.");
+    return;
   }
 
   // link the contribution records with the membership
   if (!empty($householdCreditValues['contribution'])) {
     // create membership payment records
     foreach($householdCreditValues['contribution'] as $contributionID) {
-      $result = civicrm_api3('MembershipPayment', 'create', array(
+      civicrm_api3('MembershipPayment', 'create', array(
         'sequential'      => 1,
-        'membership_id'   => $houseHoldMembership['values'][0]['id'],
+        'membership_id'   => $currentMembershipID,
         'contribution_id' => $contributionID,
       ));
     }
@@ -286,10 +296,10 @@ function calculateHouseholdCredit($householdID) {
   $returnValues = array();
 
   // set credit amount
-  $returnValues['credit'] = 301;
+  $returnValues['credit'] = 185;
 
   // set associated contributions
-  $returnValues['contribution'] = array(244, 245);
+  $returnValues['contribution'] = array(245);
 
   return $returnValues;
 }
