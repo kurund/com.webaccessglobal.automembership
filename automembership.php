@@ -162,6 +162,11 @@ function computeMembership($householdID) {
   // household
   $householdCredit = calculateHouseholdCredit($householdID);
 
+  // based on contribution credit there are 3 conditions
+  // 1. Not sufficient for the membership
+  // 2. If credits are sufficient add membership to the household
+  // 3. Based on credits check if upgrade is possible
+
   // get membership types
   $membershipTypes = civicrm_api3('MembershipType', 'get', array(
     'sequential' => 1,
@@ -169,12 +174,20 @@ function computeMembership($householdID) {
     'is_active' => 1,
   ));
 
+  // check eligibility for membership based on the credit amount
   $processMembership = FALSE;
+  $eligibleMembershipFee = 0;
+  $eligibleMembershipTypeID = 0;
+  $membershipTypesArray = array();
   foreach($membershipTypes['values'] as $key => $value) {
     if ($householdCredit >= $value['minimum_fee']) {
       $processMembership = TRUE;
-      break;
+      if ($eligibleMembershipFee <= $value['minimum_fee']) {
+        $eligibleMembershipFee = $value['minimum_fee'];
+        $eligibleMembershipTypeID = $value['id'];
+      }
     }
+    $membershipTypesArray[$value['id']] = $value['minimum_fee'];
   }
 
   // this means we don't need proceed further as credit is insufficient
@@ -182,22 +195,30 @@ function computeMembership($householdID) {
     return;
   }
 
-  exit;
   // check the membership for the household
-  $result = civicrm_api3('Membership', 'get', array(
+  $houseHoldMembership = civicrm_api3('Membership', 'get', array(
     'sequential' => 1,
     'contact_id' => $householdID,
   ));
 
+  $currentMembershipTypeID = $houseHoldMembership['values'][0]['membership_type_id'];
 
-  // based on contribution credit there are 3 conditions
-  // 1. No sufficient for the membership
-  // 2. If credits are sufficient add membership to the household
-  // 3. Based on credits check if upgrade is possible
+  // if membership does not exist and is eligible for membership then create
+  if ($houseHoldMembership['count'] == 0 && !empty($eligibleMembershipTypeID)) {
 
-  // create new membership
+  }
+  elseif ($eligibleMembershipTypeID == $currentMembershipTypeID) {
+    // if household's current membership is same as what's eligible do nothing
+    return;
+  }
+  elseif ($eligibleMembershipFee > $membershipTypesArray[$currentMembershipTypeID]) {
+    // if $eligibleMembershipFee is greater than current fee, which means
+    // household is eligible for the upgrade
+  }
 
-  // upgrade existing membership
+//  echo $eligibleMembershipFee . "  ==== " . $eligibleMembershipTypeID;
+//  exit;
+
 
   // link the contribution records with the membership
 }
@@ -209,7 +230,18 @@ function computeMembership($householdID) {
  * @return int
  */
 function calculateHouseholdCredit($householdID) {
-  $householdCredit = 35;
+  $householdCredit = 200;
 
   return $householdCredit;
+}
+
+/**
+ * Function to create / update membership for the household
+ *
+ * @param $params
+ *
+ * @return int $membershipID
+ */
+function createMembership($params) {
+  return $membershipID;
 }
