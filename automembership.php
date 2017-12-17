@@ -160,7 +160,7 @@ function automembership_civicrm_post($op, $objectName, $objectId, &$objectRef) {
 function computeMembership($householdID) {
   // calculate contribution credits for household based on members in the
   // household
-  $householdCredit = calculateHouseholdCredit($householdID);
+  $householdCreditValues = calculateHouseholdCredit($householdID);
 
   // based on contribution credit there are 3 conditions
   // 1. Not sufficient for the membership
@@ -170,8 +170,8 @@ function computeMembership($householdID) {
   // get membership types
   $membershipTypes = civicrm_api3('MembershipType', 'get', array(
     'sequential' => 1,
-    'return' => array("minimum_fee"),
-    'is_active' => 1,
+    'return'     => array("minimum_fee"),
+    'is_active'  => 1,
   ));
 
   // check eligibility for membership based on the credit amount
@@ -180,7 +180,7 @@ function computeMembership($householdID) {
   $eligibleMembershipTypeID = 0;
   $membershipTypesArray = array();
   foreach($membershipTypes['values'] as $key => $value) {
-    if ($householdCredit >= $value['minimum_fee']) {
+    if ($householdCreditValues['credit'] >= $value['minimum_fee']) {
       $processMembership = TRUE;
       if ($eligibleMembershipFee <= $value['minimum_fee']) {
         $eligibleMembershipFee = $value['minimum_fee'];
@@ -198,29 +198,82 @@ function computeMembership($householdID) {
   // check the membership for the household
   $houseHoldMembership = civicrm_api3('Membership', 'get', array(
     'sequential' => 1,
+    'status_id'  => array('!=' => "Cancelled"),
     'contact_id' => $householdID,
   ));
 
-  $currentMembershipTypeID = $houseHoldMembership['values'][0]['membership_type_id'];
+  if (!empty($houseHoldMembership['values'][0]['membership_type_id'])) {
+    $currentMembershipTypeID = $houseHoldMembership['values'][0]['membership_type_id'];
+    $currentMembershipID = $houseHoldMembership['values'][0]['id'];
+  }
+
+  // for some reason / user error, if there are more than 1 active membership
+  // just write to log and return, admin will have to manually set only 1
+  // active membership
+  if ($houseHoldMembership['count'] > 1) {
+    CRM_Core_Error::debug_log_message(
+      "AMC: There are {$houseHoldMembership['count']} active memberships for the household ID: {$householdID}. Only one membership needs to be active at a time. Hence, auto membership computation is aborted.");
+    return;
+  }
 
   // if membership does not exist and is eligible for membership then create
   if ($houseHoldMembership['count'] == 0 && !empty($eligibleMembershipTypeID)) {
+    $houseHoldMembership = civicrm_api3('Membership', 'create', array(
+      'sequential'         => 1,
+      'membership_type_id' => $eligibleMembershipTypeID,
+      'contact_id'         => $householdID,
+    ));
 
+    $currentMembershipID = $houseHoldMembership['values'][0]['id'];
   }
   elseif ($eligibleMembershipTypeID == $currentMembershipTypeID) {
     // if household's current membership is same as what's eligible do nothing
+    CRM_Core_Error::debug_log_message("AMC: Current membership eligibility for household ID: {$householdID} is same as current  membership hence aborted.");
     return;
   }
   elseif ($eligibleMembershipFee > $membershipTypesArray[$currentMembershipTypeID]) {
     // if $eligibleMembershipFee is greater than current fee, which means
     // household is eligible for the upgrade
+
+    // cancel current membership
+    civicrm_api3('Membership', 'create', array(
+      'sequential'         => 1,
+      'membership_type_id' => $currentMembershipTypeID,
+      'contact_id'         => $householdID,
+      'is_override'        => 1,
+      'skipStatusCal'      => 1,
+      'status_id'          => 6,
+      'id'                 => $currentMembershipID,
+    ));
+
+    // create new membership
+    // calculate dates based on membership type
+    $calculateDates = CRM_Member_BAO_MembershipType::getDatesForMembershipType(
+      $eligibleMembershipTypeID,
+      $houseHoldMembership['values'][0]['join_date'], date('YmdHis'));
+
+    $houseHoldMembership = civicrm_api3('Membership', 'create', array(
+      'sequential'         => 1,
+      'membership_type_id' => $eligibleMembershipTypeID,
+      'contact_id'         => $householdID,
+      'join_date'          => $calculateDates['join_date'],
+      'start_date'         => $calculateDates['start_date'],
+      'end_date'           => $calculateDates['end_date'],
+    ));
+
   }
 
-//  echo $eligibleMembershipFee . "  ==== " . $eligibleMembershipTypeID;
-//  exit;
-
-
   // link the contribution records with the membership
+  if (!empty($householdCreditValues['contribution'])) {
+    // create membership payment records
+    foreach($householdCreditValues['contribution'] as $contributionID) {
+      $result = civicrm_api3('MembershipPayment', 'create', array(
+        'sequential'      => 1,
+        'membership_id'   => $houseHoldMembership['values'][0]['id'],
+        'contribution_id' => $contributionID,
+      ));
+    }
+  }
 }
 
 /**
@@ -230,18 +283,13 @@ function computeMembership($householdID) {
  * @return int
  */
 function calculateHouseholdCredit($householdID) {
-  $householdCredit = 200;
+  $returnValues = array();
 
-  return $householdCredit;
-}
+  // set credit amount
+  $returnValues['credit'] = 301;
 
-/**
- * Function to create / update membership for the household
- *
- * @param $params
- *
- * @return int $membershipID
- */
-function createMembership($params) {
-  return $membershipID;
+  // set associated contributions
+  $returnValues['contribution'] = array(244, 245);
+
+  return $returnValues;
 }
