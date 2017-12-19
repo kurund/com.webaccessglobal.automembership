@@ -192,7 +192,7 @@ function computeMembership($householdID) {
 
   // this means we don't need proceed further as credit is insufficient
   if (!$processMembership) {
-    CRM_Core_Error::debug_log_message("AMC: Insufficient credits for membership, hence aborted. Household ID: {$householdID}.");
+    Civi::log()->info("AMC: Insufficient credits for membership, hence aborted. Household ID: {$householdID}.");
     return;
   }
 
@@ -212,7 +212,7 @@ function computeMembership($householdID) {
   // just write to log and return, admin will have to manually set only 1
   // active membership
   if ($existingHouseHoldMembership['count'] > 1) {
-    CRM_Core_Error::debug_log_message(
+    Civi::log()->info(
       "AMC: There are {$existingHouseHoldMembership['count']} active memberships for the household ID: {$householdID}. Only one membership needs to be active at a time. Hence, auto membership computation is aborted.");
     return;
   }
@@ -226,11 +226,11 @@ function computeMembership($householdID) {
     ));
 
     $currentMembershipID = $houseHoldMembership['id'];
-    CRM_Core_Error::debug_log_message("AMC: New membership has been created for household ID: {$householdID}.");
+    Civi::log()->info("AMC: New membership has been created for household ID: {$householdID}.");
   }
   elseif ($eligibleMembershipTypeID == $currentMembershipTypeID) {
     // if household's current membership is same as what's eligible do nothing
-    CRM_Core_Error::debug_log_message("AMC: Current membership eligibility for household ID: {$householdID} is same as current membership hence aborted.");
+    Civi::log()->info("AMC: Current membership eligibility for household ID: {$householdID} is same as current membership hence aborted.");
     return;
   }
   elseif ($eligibleMembershipFee > $membershipTypesArray[$currentMembershipTypeID]) {
@@ -265,11 +265,11 @@ function computeMembership($householdID) {
     ));
 
     $currentMembershipID = $houseHoldMembership['id'];
-    CRM_Core_Error::debug_log_message("AMC: Membership has been upgraded for household ID: {$householdID}.");
+    Civi::log()->info("AMC: Membership has been upgraded for household ID: {$householdID}.");
   }
   else {
     // this mean credit is less than existing membership level hence abort
-    CRM_Core_Error::debug_log_message("AMC: Insufficient credits for membership upgrade, hence aborted. Household ID: {$householdID}.");
+    Civi::log()->info("AMC: Insufficient credits for membership upgrade, hence aborted. Household ID: {$householdID}.");
     return;
   }
 
