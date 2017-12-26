@@ -204,8 +204,8 @@ function computeMembership($householdID) {
   ));
 
   if (!empty($existingHouseHoldMembership['values'][0]['membership_type_id'])) {
-    $currentMembershipTypeID = $existingHouseHoldMembership['values'][0]['membership_type_id'];
-    $currentMembershipID = $existingHouseHoldMembership['values'][0]['id'];
+    $oldMembershipTypeID = $existingHouseHoldMembership['values'][0]['membership_type_id'];
+    $oldMembershipID = $existingHouseHoldMembership['values'][0]['id'];
   }
 
   // for some reason / user error, if there are more than 1 active membership
@@ -228,31 +228,20 @@ function computeMembership($householdID) {
     $currentMembershipID = $houseHoldMembership['id'];
     Civi::log()->info("AMC: New membership has been created for household ID: {$householdID}.");
   }
-  elseif ($eligibleMembershipTypeID == $currentMembershipTypeID) {
+  elseif ($eligibleMembershipTypeID == $oldMembershipTypeID) {
     // if household's current membership is same as what's eligible do nothing
     Civi::log()->info("AMC: Current membership eligibility for household ID: {$householdID} is same as current membership hence aborted.");
     return;
   }
-  elseif ($eligibleMembershipFee > $membershipTypesArray[$currentMembershipTypeID]) {
+  elseif ($eligibleMembershipFee > $membershipTypesArray[$oldMembershipTypeID]) {
     // if $eligibleMembershipFee is greater than current fee, which means
     // household is eligible for the upgrade
-
-    // cancel current membership
-    civicrm_api3('Membership', 'create', array(
-      'sequential'         => 1,
-      'membership_type_id' => $currentMembershipTypeID,
-      'contact_id'         => $householdID,
-      'is_override'        => 1,
-      'skipStatusCal'      => 1,
-      'status_id'          => 6,
-      'id'                 => $currentMembershipID,
-    ));
 
     // create new membership
     // calculate dates based on membership type
     $calculateDates = CRM_Member_BAO_MembershipType::getDatesForMembershipType(
       $eligibleMembershipTypeID,
-      $existingHouseHoldMembership['values'][$currentMembershipID]['join_date'],
+      $existingHouseHoldMembership['values'][$oldMembershipID]['join_date'],
       date('YmdHis'));
 
     $houseHoldMembership = civicrm_api3('Membership', 'create', array(
@@ -266,6 +255,24 @@ function computeMembership($householdID) {
 
     $currentMembershipID = $houseHoldMembership['id'];
     Civi::log()->info("AMC: Membership has been upgraded for household ID: {$householdID}.");
+
+    // related membership uses static variable, not sure why. Hence, below code is hack to
+    // reset the static variable before we update the existing membership
+    // I know this is weird but it works :)
+    CRM_Member_BAO_Membership::createRelatedMemberships(
+      CRM_Core_DAO::$_nullArray, CRM_Core_DAO::$_nullObject, TRUE);
+
+    // cancel old / current membership
+    civicrm_api3('Membership', 'create', array(
+      'sequential'         => 1,
+      'membership_type_id' => $oldMembershipTypeID,
+      'contact_id'         => $householdID,
+      'is_override'        => 1,
+      'status_id'          => 6,
+      'skipStatusCal'      => 1,
+      'id'                 => $oldMembershipID,
+    ));
+
   }
   else {
     // this mean credit is less than existing membership level hence abort
@@ -299,7 +306,7 @@ function calculateHouseholdCredit($householdID) {
   $returnValues['credit'] = 185;
 
   // set associated contributions
-  $returnValues['contribution'] = array(245);
+  $returnValues['contribution'] = array();
 
   return $returnValues;
 }
