@@ -302,11 +302,70 @@ function computeMembership($householdID) {
 function calculateHouseholdCredit($householdID) {
   $returnValues = array();
 
-  // set credit amount
-  $returnValues['credit'] = 185;
+  // get associated contributions for the household that are not associated with
+  // any membership and of type "Donation"
 
-  // set associated contributions
+  // get all the household members
+  $result = civicrm_api3('Relationship', 'get', array(
+    'sequential' => 1,
+    'return' => array("contact_id_a"),
+    'contact_id_b' => $householdID,
+    'relationship_type_id' => 8, // household member of
+    'is_active' => 1,
+  ));
+
+
+  $householdMemberIds = array();
+  foreach($result['values'] as $dontCare => $value) {
+    $householdMemberIds[$value['contact_id_a']] = $value['contact_id_a'];
+  }
+
+  // get the start date of latest cancelled / expired membership
+  $query = "SELECT id, start_date, status_id
+FROM `civicrm_membership`
+WHERE contact_id = {$householdID}
+  AND status_id != 6
+ORDER BY start_date DESC, `status_id` ASC LIMIT 1";
+
+  $result = CRM_Core_DAO::executeQuery($query);
+  $result->fetch();
+
+  // get all the valid contributions for all household members
+  $query = "SELECT cc.id, DATE_FORMAT(cc.receive_date,'%Y-%m-%d') as receive_date, cc.total_amount
+FROM `civicrm_contribution` as cc
+WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
+  AND cc.contact_id IN (". implode(',', $householdMemberIds).")
+  AND cc.`receive_date` > '{$result->start_date} 23:59:00'";
+
+  $contributions = CRM_Core_DAO::executeQuery($query);
   $returnValues['contribution'] = array();
+  $returnValues['credit'] = 0;
+  while($contributions->fetch()) {
+    $returnValues['contribution'][] = $contributions->id;
+
+    // calculate credits based on pro-rata basis
+    // end date calculation based on contribution receive date
+    $date = explode('-', $contributions->receive_date);
+    $year = $date[0];
+    $month = $date[1];
+    $day = $date[2];
+
+    // this should be 1 year after contribution receive date
+    $endDate = date('Y-m-d', mktime(0, 0, 0, $month, $day - 1, $year + 1));
+
+    // find the difference between today and end of year since contribution was
+    // received
+    $interval = strtotime($endDate) - time();
+    $interval = floor($interval / (60 * 60 * 24));
+
+    // compute credit based on pro-rata
+    $returnValues['credit'] += ($interval/365) * $contributions->total_amount;
+  }
+
+  // round to 2 decimal places
+  $returnValues['credit'] = round($returnValues['credit'], 2);
+
+  //CRM_Core_Error::debug_var('$returnValues', $returnValues);
 
   return $returnValues;
 }
