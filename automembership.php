@@ -332,7 +332,7 @@ ORDER BY start_date DESC, `status_id` ASC LIMIT 1";
 
   // if there is membership, consider all the contributions > start date
   if (!empty($result->start_date)) {
-    $startDate = $result->start_date . ' 23:59:00';
+    $startDate = $result->start_date;
   }
   else {
     // if no membership, then consider only last 1 year contributions
@@ -347,6 +347,8 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
   AND cc.contact_id IN (". implode(',', $householdMemberIds).")
   AND cc.`receive_date` > '{$startDate}'
   AND cmp.contribution_id IS NULL";
+
+  //CRM_Core_Error::debug_var('$query', $query);
 
   $contributions = CRM_Core_DAO::executeQuery($query);
   $returnValues['contribution'] = array();
