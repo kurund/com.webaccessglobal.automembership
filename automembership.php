@@ -342,37 +342,43 @@ ORDER BY start_date DESC, `status_id` ASC LIMIT 1";
   // get all the valid contributions for all household members
   $query = "SELECT cc.id, DATE_FORMAT(cc.receive_date,'%Y-%m-%d') as receive_date, cc.total_amount
 FROM `civicrm_contribution` as cc
+  LEFT JOIN `civicrm_membership_payment` as cmp ON cc.id = cmp.contribution_id
 WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
   AND cc.contact_id IN (". implode(',', $householdMemberIds).")
-  AND cc.`receive_date` > '{$startDate}'";
+  AND cc.`receive_date` > '{$startDate}'
+  AND cmp.contribution_id IS NULL";
 
-  CRM_Core_Error::debug_var('$query', $query);
   $contributions = CRM_Core_DAO::executeQuery($query);
   $returnValues['contribution'] = array();
   $returnValues['credit'] = 0;
   while($contributions->fetch()) {
     $returnValues['contribution'][] = $contributions->id;
 
-    // calculate credits based on pro-rata basis
-    // end date calculation based on contribution receive date
-    $date = explode('-', $contributions->receive_date);
-    $year = $date[0];
-    $month = $date[1];
-    $day = $date[2];
+    // give full credit to all the today and future contributions
+    if ($contributions->receive_date >= date('Y-m-d')) {
+      $returnValues['credit'] += $contributions->total_amount;
+    }
+    else {
+      // calculate credits based on pro-rata basis
+      // end date calculation based on contribution receive date
+      $date  = explode('-', $contributions->receive_date);
+      $year  = $date[0];
+      $month = $date[1];
+      $day   = $date[2];
 
-    // this should be 1 year after contribution receive date
-    $endDate = date('Y-m-d', mktime(0, 0, 0, $month, $day - 1, $year + 1));
+      // this should be 1 year after contribution receive date
+      $endDate = date('Y-m-d', mktime(0, 0, 0, $month, $day - 1, $year + 1));
 
-    CRM_Core_Error::debug_var('$contributions->receive_date', $contributions->receive_date);
-    // find the difference between today and end of year since contribution was
-    // received
-    $interval = strtotime($endDate) - time();
+      // find the difference between today and end of year since contribution was
+      // received
+      $interval = strtotime($endDate) - time();
 
-    // for contributions less than today use pro-rata calculations
-    $interval = floor($interval / (60 * 60 * 24));
+      // for contributions less than today use pro-rata calculations
+      $interval = floor($interval / (60 * 60 * 24));
 
-    // compute credit based on pro-rata
-    $returnValues['credit'] += ($interval / 365) * $contributions->total_amount;
+      // compute credit based on pro-rata
+      $returnValues['credit'] += ($interval / 365) * $contributions->total_amount;
+    }
   }
 
   // round to 2 decimal places
