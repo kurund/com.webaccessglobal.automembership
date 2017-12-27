@@ -397,7 +397,6 @@ function automembership_civicrm_pageRun(&$page) {
     if ($result['values'][0]['contact_type'] == 'Household') {
       // get the credit amount
       $creditCalculations = calculateHouseholdCredit($page->_contactId);
-      CRM_Core_Error::debug_var('$creditCalculations', $creditCalculations);
 
       // get membership types
       $membershipTypes = civicrm_api3('MembershipType', 'get', array(
