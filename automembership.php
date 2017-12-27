@@ -330,13 +330,23 @@ ORDER BY start_date DESC, `status_id` ASC LIMIT 1";
   $result = CRM_Core_DAO::executeQuery($query);
   $result->fetch();
 
+  // if there is membership, consider all the contributions > start date
+  if (!empty($result->start_date)) {
+    $startDate = $result->start_date . ' 23:59:00';
+  }
+  else {
+    // if no membership, then consider only last 1 year contributions
+    $startDate = date('Y-m-d', mktime(0, 0, 0, date('m'), date('d') + 1, date('Y') - 1));
+  }
+
   // get all the valid contributions for all household members
   $query = "SELECT cc.id, DATE_FORMAT(cc.receive_date,'%Y-%m-%d') as receive_date, cc.total_amount
 FROM `civicrm_contribution` as cc
 WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
   AND cc.contact_id IN (". implode(',', $householdMemberIds).")
-  AND cc.`receive_date` > '{$result->start_date} 23:59:00'";
+  AND cc.`receive_date` > '{$startDate}'";
 
+  CRM_Core_Error::debug_var('$query', $query);
   $contributions = CRM_Core_DAO::executeQuery($query);
   $returnValues['contribution'] = array();
   $returnValues['credit'] = 0;
@@ -353,13 +363,16 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
     // this should be 1 year after contribution receive date
     $endDate = date('Y-m-d', mktime(0, 0, 0, $month, $day - 1, $year + 1));
 
+    CRM_Core_Error::debug_var('$contributions->receive_date', $contributions->receive_date);
     // find the difference between today and end of year since contribution was
     // received
     $interval = strtotime($endDate) - time();
+
+    // for contributions less than today use pro-rata calculations
     $interval = floor($interval / (60 * 60 * 24));
 
     // compute credit based on pro-rata
-    $returnValues['credit'] += ($interval/365) * $contributions->total_amount;
+    $returnValues['credit'] += ($interval / 365) * $contributions->total_amount;
   }
 
   // round to 2 decimal places
@@ -368,4 +381,52 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
   //CRM_Core_Error::debug_var('$returnValues', $returnValues);
 
   return $returnValues;
+}
+
+function automembership_civicrm_pageRun(&$page) {
+  $pageName = $page->getVar('_name');
+  if ($pageName == 'CRM_Member_Page_Tab') {
+    // we should show summary only for household contact
+    $result = civicrm_api3('Contact', 'get', array(
+      'sequential' => 1,
+      'return' => array("contact_type"),
+      'id' => $page->_contactId,
+    ));
+
+    $autoMembershipSummary = '';
+    if ($result['values'][0]['contact_type'] == 'Household') {
+      // get the credit amount
+      $creditCalculations = calculateHouseholdCredit($page->_contactId);
+      CRM_Core_Error::debug_var('$creditCalculations', $creditCalculations);
+
+      // get membership types
+      $membershipTypes = civicrm_api3('MembershipType', 'get', array(
+        'sequential' => 1,
+        'return'     => array("minimum_fee", 'name'),
+        'is_active'  => 1,
+      ));
+
+      // build membership listing based on the credit amount
+      $autoMembershipSummary = '
+<table class="report">
+  <tr class="columnheader-dark">
+    <th>Membership</th>
+    <th>Amount Needed</th>
+  </tr>';
+      foreach($membershipTypes['values'] as $key => $value) {
+        $amountNeeded = $value['minimum_fee'] - $creditCalculations['credit'];
+        $autoMembershipSummary .=
+          '<tr>
+            <td><strong>'.$value['name'].'</strong></td>
+            <td>$'.$amountNeeded.'</td>
+           </tr>';
+      }
+
+      $autoMembershipSummary .= '
+</table>';
+
+    }
+
+    $page->assign('autoMembershipSummary', $autoMembershipSummary);
+  }
 }
