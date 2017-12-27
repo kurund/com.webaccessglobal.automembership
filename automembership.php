@@ -310,7 +310,7 @@ function calculateHouseholdCredit($householdID) {
     'sequential' => 1,
     'return' => array("contact_id_a"),
     'contact_id_b' => $householdID,
-    'relationship_type_id' => 8, // household member of
+    'relationship_type_id' => 8, // household member is
     'is_active' => 1,
   ));
 
@@ -391,6 +391,11 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
   return $returnValues;
 }
 
+/**
+ * Implements hook_civicrm_pageRun().
+ *
+ * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_pageRun/
+ */
 function automembership_civicrm_pageRun(&$page) {
   $pageName = $page->getVar('_name');
   if ($pageName == 'CRM_Member_Page_Tab') {
@@ -403,37 +408,79 @@ function automembership_civicrm_pageRun(&$page) {
 
     $autoMembershipSummary = '';
     if ($result['values'][0]['contact_type'] == 'Household') {
-      // get the credit amount
-      $creditCalculations = calculateHouseholdCredit($page->_contactId);
-
-      // get membership types
-      $membershipTypes = civicrm_api3('MembershipType', 'get', array(
-        'sequential' => 1,
-        'return'     => array("minimum_fee", 'name'),
-        'is_active'  => 1,
-      ));
-
-      // build membership listing based on the credit amount
-      $autoMembershipSummary = '
-<table class="report">
-  <tr class="columnheader-dark">
-    <th>Membership</th>
-    <th>Amount Needed</th>
-  </tr>';
-      foreach($membershipTypes['values'] as $key => $value) {
-        $amountNeeded = $value['minimum_fee'] - $creditCalculations['credit'];
-        $autoMembershipSummary .=
-          '<tr>
-            <td><strong>'.$value['name'].'</strong></td>
-            <td>$'.$amountNeeded.'</td>
-           </tr>';
-      }
-
-      $autoMembershipSummary .= '
-</table>';
-
+      $autoMembershipSummary = buildMembershipSummary($page->_contactId);
     }
 
     $page->assign('autoMembershipSummary', $autoMembershipSummary);
   }
+}
+
+/**
+ * Implements hook_civicrm_preProcess().
+ *
+ * @link https://docs.civicrm.org/dev/en/latest/hooks/hook_civicrm_preProcess/
+ */
+function automembership_civicrm_preProcess($formName, &$form) {
+  if ($formName == 'CRM_Contribute_Form_Contribution_Main') {
+    $autoMembershipSummary = '';
+
+    // if use is logged in
+    if ($form->_membershipContactID > 0) {
+      // get the contact id of contributor
+      // get the household for the contributor
+      $result = civicrm_api3('Relationship', 'get', array(
+        'sequential' => 1,
+        'return' => array("contact_id_b"),
+        'contact_id_a' => $form->_membershipContactID,
+        'relationship_type_id' => 8, // household member of
+        'is_active' => 1,
+      ));
+
+      // compute membership only if household exist
+      if ($result['count'] > 0) {
+        $autoMembershipSummary = buildMembershipSummary($result['values'][0]['contact_id_b']);
+      }
+    }
+    $form->assign('autoMembershipSummary', $autoMembershipSummary);
+  }
+}
+
+/**
+ * Function to build the membership eligibility summary
+ *
+ * @param $householdID
+ * @return string
+ *
+ */
+function buildMembershipSummary($householdID) {
+  // get the credit amount
+  $creditCalculations = calculateHouseholdCredit($householdID);
+
+  // get membership types
+  $membershipTypes = civicrm_api3('MembershipType', 'get', array(
+    'sequential' => 1,
+    'return'     => array("minimum_fee", 'name'),
+    'is_active'  => 1,
+  ));
+
+  // build membership listing based on the credit amount
+  $autoMembershipSummary = '
+<table class="report">
+  <tr class="columnheader-dark">
+    <th>Membership</th>
+    <th>Donation Amount</th>
+  </tr>';
+  foreach($membershipTypes['values'] as $key => $value) {
+    $amountNeeded = $value['minimum_fee'] - $creditCalculations['credit'];
+    $autoMembershipSummary .=
+      '<tr>
+            <td><strong>'.$value['name'].'</strong></td>
+            <td>$'.$amountNeeded.'</td>
+           </tr>';
+  }
+
+  $autoMembershipSummary .= '
+</table>';
+
+  return $autoMembershipSummary;
 }
