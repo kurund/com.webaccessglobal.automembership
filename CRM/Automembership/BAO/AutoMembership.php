@@ -7,9 +7,11 @@ class CRM_Automembership_BAO_AutoMembership {
   /**
    * Function to determine if a membership needs to be created for a household
    *
-   * @param $householdID
+   * @param int $householdID household id
    *
    * @throws \CiviCRM_API3_Exception
+   *
+   * @return void
    */
   public static function computeMembership($householdID) {
     // calculate contribution credits for household based on members in the
@@ -148,9 +150,9 @@ class CRM_Automembership_BAO_AutoMembership {
 
   /**
    * Function to calculate household credit
-   * @param $householdID
+   * @param int $householdID household id
    *
-   * @return int
+   * @return array
    */
   public static function calculateHouseholdCredit($householdID) {
     $returnValues = array();
@@ -172,33 +174,16 @@ class CRM_Automembership_BAO_AutoMembership {
       $householdMemberIds[$value['contact_id_a']] = $value['contact_id_a'];
     }
 
-    // get the start date of latest cancelled / expired membership
-    $query = "SELECT id, start_date, status_id
-FROM `civicrm_membership`
-WHERE contact_id = {$householdID}
-  AND status_id != 6
-ORDER BY start_date DESC, `status_id` ASC LIMIT 1";
-
-    $result = CRM_Core_DAO::executeQuery($query);
-    $result->fetch();
-
-    // if there is membership, consider all the contributions > start date
-    if (!empty($result->start_date)) {
-      $startDate = $result->start_date;
-    }
-    else {
-      // if no membership, then consider only last 1 year contributions
-      $startDate = date('Y-m-d', mktime(0, 0, 0, date('m'), date('d') + 1, date('Y') - 1));
-    }
+    // we should consider only last 1 year contributions
+    $startDate = date('Y-m-d', mktime(0, 0, 0, date('m'), date('d') + 1, date('Y') - 1));
 
     // get all the valid contributions for all household members
     $query = "SELECT cc.id, DATE_FORMAT(cc.receive_date,'%Y-%m-%d') as receive_date, cc.total_amount
 FROM `civicrm_contribution` as cc
-  LEFT JOIN `civicrm_membership_payment` as cmp ON cc.id = cmp.contribution_id
 WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
   AND cc.contact_id IN (". implode(',', $householdMemberIds).")
   AND cc.`receive_date` > '{$startDate}'
-  AND cmp.contribution_id IS NULL";
+";
 
     //CRM_Core_Error::debug_var('$query', $query);
 
@@ -246,9 +231,10 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
   /**
    * Function to build the membership eligibility summary
    *
-   * @param $householdID
-   * @return string
+   * @param int $householdID  household Id
+   * @param boolean $addRefreshButton whether to add refresh button or not
    *
+   * @return string $autoMembershipSummary
    */
   public static function buildMembershipSummary($householdID, $addRefreshButton = FALSE) {
     // get the credit amount
@@ -279,7 +265,11 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
       $autoMembershipSummary = '
         <div class="action-link">
             <a accesskey="N" href="/civicrm/membershiprefresh?cid='.$householdID.'&reset=1" class="button no-popup"><span><i class="crm-i fa-refresh"></i> Refresh Membership</span></a>
-            <br/ ><br/ >
+            <br/><br/>
+        </div>
+        <div>
+          <strong>Current Credit: </strong>$'.$creditCalculations['credit'].'
+          <br/><br/>
         </div>
       ';
     }
@@ -309,5 +299,4 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
 
     return $autoMembershipSummary;
   }
-
 }
