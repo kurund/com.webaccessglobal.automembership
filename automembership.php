@@ -398,8 +398,8 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
  */
 function automembership_civicrm_pageRun(&$page) {
   $pageName = $page->getVar('_name');
-  $action = $page->getVar('_action'); // 8 - delete action
-  if ($pageName == 'CRM_Member_Page_Tab' && $action != 8) {
+  $action = $page->getVar('_action'); // 16 browse action
+  if ($pageName == 'CRM_Member_Page_Tab' && $action == 16) {
     // we should show summary only for household contact
     $result = civicrm_api3('Contact', 'get', array(
       'sequential' => 1,
@@ -411,7 +411,6 @@ function automembership_civicrm_pageRun(&$page) {
     if ($result['values'][0]['contact_type'] == 'Household') {
       $autoMembershipSummary = buildMembershipSummary($page->_contactId);
     }
-
     $page->assign('autoMembershipSummary', $autoMembershipSummary);
   }
 }
@@ -479,12 +478,6 @@ function buildMembershipSummary($householdID) {
   ));
 
   // build membership listing based on the credit amount
-  $autoMembershipSummary = '
-<table class="report">
-  <tr class="columnheader-dark">
-    <th>Membership</th>
-    <th>Donation Amount</th>
-  </tr>';
   foreach($membershipTypes['values'] as $key => $value) {
     if ($value['minimum_fee'] > $minimumFeeOfExistingMembership) {
       $amountNeeded = $value['minimum_fee'] - $creditCalculations['credit'];
@@ -496,8 +489,16 @@ function buildMembershipSummary($householdID) {
     }
   }
 
-  $autoMembershipSummary .= '
+  if (!empty($autoMembershipSummary)) {
+    $autoMembershipSummary = '
+<table class="report">
+  <tr class="columnheader-dark">
+    <th>Membership</th>
+    <th>Donation Amount</th>
+  </tr>
+  ' . $autoMembershipSummary . '
 </table>';
+  }
 
   return $autoMembershipSummary;
 }
