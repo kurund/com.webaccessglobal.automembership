@@ -398,7 +398,8 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
  */
 function automembership_civicrm_pageRun(&$page) {
   $pageName = $page->getVar('_name');
-  if ($pageName == 'CRM_Member_Page_Tab') {
+  $action = $page->getVar('_action'); // 8 - delete action
+  if ($pageName == 'CRM_Member_Page_Tab' && $action != 8) {
     // we should show summary only for household contact
     $result = civicrm_api3('Contact', 'get', array(
       'sequential' => 1,
