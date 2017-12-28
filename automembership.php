@@ -236,12 +236,11 @@ function computeMembership($householdID) {
   elseif ($eligibleMembershipFee > $membershipTypesArray[$oldMembershipTypeID]) {
     // if $eligibleMembershipFee is greater than current fee, which means
     // household is eligible for the upgrade
-
     // create new membership
     // calculate dates based on membership type
     $calculateDates = CRM_Member_BAO_MembershipType::getDatesForMembershipType(
       $eligibleMembershipTypeID,
-      $existingHouseHoldMembership['values'][$oldMembershipID]['join_date'],
+      $existingHouseHoldMembership['values'][0]['join_date'],
       date('YmdHis'));
 
     $houseHoldMembership = civicrm_api3('Membership', 'create', array(
