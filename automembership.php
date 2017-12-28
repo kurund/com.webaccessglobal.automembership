@@ -456,6 +456,20 @@ function buildMembershipSummary($householdID) {
   // get the credit amount
   $creditCalculations = calculateHouseholdCredit($householdID);
 
+  // check the membership for the household
+  $result = civicrm_api3('Membership', 'get', array(
+    'sequential' => 1,
+    'return' => array("membership_type_id"),
+    'contact_id' => $householdID,
+    'status_id' => array('IN' => array("New", "Current", "Grace")),
+    'api.MembershipType.get' => array('return' => "minimum_fee"),
+  ));
+
+  $minimumFeeOfExistingMembership = 0;
+  if ($result['count'] > 0) {
+    $minimumFeeOfExistingMembership = $result['values'][0]['api.MembershipType.get']['values'][0]['minimum_fee'];
+  }
+
   // get membership types
   $membershipTypes = civicrm_api3('MembershipType', 'get', array(
     'sequential' => 1,
@@ -471,12 +485,14 @@ function buildMembershipSummary($householdID) {
     <th>Donation Amount</th>
   </tr>';
   foreach($membershipTypes['values'] as $key => $value) {
-    $amountNeeded = $value['minimum_fee'] - $creditCalculations['credit'];
-    $autoMembershipSummary .=
-      '<tr>
-            <td><strong>'.$value['name'].'</strong></td>
-            <td>$'.$amountNeeded.'</td>
+    if ($value['minimum_fee'] > $minimumFeeOfExistingMembership) {
+      $amountNeeded = $value['minimum_fee'] - $creditCalculations['credit'];
+      $autoMembershipSummary .=
+        '<tr>
+            <td><strong>' . $value['name'] . '</strong></td>
+            <td>$' . $amountNeeded . '</td>
            </tr>';
+    }
   }
 
   $autoMembershipSummary .= '
