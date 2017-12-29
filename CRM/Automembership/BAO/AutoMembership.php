@@ -262,9 +262,13 @@ WHERE cc.financial_type_id = 1 AND contribution_status_id = 1
     ));
 
     if ($addRefreshButton) {
+      $refreshURL = CRM_Utils_System::url('civicrm/membershiprefresh',
+        "reset=1&cid={$householdID}&reset=1"
+      );
+
       $autoMembershipSummary = '
         <div class="action-link">
-            <a accesskey="N" href="/civicrm/membershiprefresh?cid='.$householdID.'&reset=1" class="button no-popup"><span><i class="crm-i fa-refresh"></i> Refresh Membership</span></a>
+            <a accesskey="N" href="'.$refreshURL.'" class="button no-popup"><span><i class="crm-i fa-refresh"></i> Refresh Membership</span></a>
             <br/><br/>
         </div>
         <div>
