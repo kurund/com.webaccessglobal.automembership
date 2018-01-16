@@ -55,7 +55,7 @@ class CRM_Automembership_BAO_AutoMembership {
     // check the membership for the household
     $existingHouseHoldMembership = civicrm_api3('Membership', 'get', array(
       'sequential' => 1,
-      'status_id'  => array('!=' => "Cancelled"),
+      'status_id' => array('NOT IN' => array("Cancelled", "Expired")),
       'contact_id' => $householdID,
     ));
 
