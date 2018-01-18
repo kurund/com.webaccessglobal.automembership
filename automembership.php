@@ -158,7 +158,8 @@ function automembership_civicrm_post($op, $objectName, $objectId, &$objectRef) {
 function automembership_civicrm_pageRun(&$page) {
   $pageName = $page->getVar('_name');
   $action = $page->getVar('_action'); // 16 browse action
-  if ($pageName == 'CRM_Member_Page_Tab' && $action == 16) {
+  $pages = array('CRM_Member_Page_Tab', 'CRM_Contribute_Page_Tab');
+  if (in_array($pageName, $pages) && $action == 16) {
     // we should show summary only for household contact
     $result = civicrm_api3('Contact', 'get', array(
       'sequential' => 1,
@@ -167,8 +168,26 @@ function automembership_civicrm_pageRun(&$page) {
     ));
 
     $autoMembershipSummary = '';
-    if ($result['values'][0]['contact_type'] == 'Household') {
-      $autoMembershipSummary = CRM_Automembership_BAO_AutoMembership::buildMembershipSummary($page->_contactId, TRUE);
+    if ($pageName == 'CRM_Member_Page_Tab') {
+      if ($result['values'][0]['contact_type'] == 'Household') {
+        $autoMembershipSummary = CRM_Automembership_BAO_AutoMembership::buildMembershipSummary($page->_contactId, TRUE);
+      }
+    }
+    elseif ($pageName == 'CRM_Contribute_Page_Tab') {
+      if ($result['values'][0]['contact_type'] != 'Household') {
+        // get the household for the contributor
+        $result = civicrm_api3('Relationship', 'get', array(
+          'sequential' => 1,
+          'return' => array("contact_id_b"),
+          'contact_id_a' => $page->_contactId,
+          'relationship_type_id' => 8, // household member of
+          'is_active' => 1,
+        ));
+
+        if ($result['count'] > 0) {
+          $autoMembershipSummary = CRM_Automembership_BAO_AutoMembership::buildMembershipSummary($result['values'][0]['contact_id_b']);
+        }
+      }
     }
     $page->assign('autoMembershipSummary', $autoMembershipSummary);
   }
